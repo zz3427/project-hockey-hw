@@ -169,7 +169,7 @@ module vga_ball(
    localparam C_LO = 24'd2116;  // 46^2
    localparam C_HI = 24'd2916;  // 54^2
 
-   localparam PADDLE_R2 = 24'd400;  // radius 20 px
+   localparam PADDLE_R2 = 24'd900;  // radius 20 px
 
    // -------------------------------------------------------
    // Centre circle distance squared
