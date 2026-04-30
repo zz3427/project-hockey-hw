@@ -9,6 +9,8 @@
  * Fmax (Slow 1100mV 85C): TBD after synthesis
  */
 
+ // git test by wang
+
 module vga_ball(
    input  logic        clk,
    input  logic        reset,
