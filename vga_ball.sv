@@ -170,6 +170,14 @@ module vga_ball(
 
    localparam PADDLE_R2 = 24'd900;  // radius 30 px
    localparam PUCK_R2   = 24'd400;  // puck radius 20 px
+    
+   // Score display positions
+   localparam SCORE_Y  = 10'd30;
+   localparam P1_SCORE_X = 10'd145;  // top of left side
+   localparam P2_SCORE_X = 10'd465;  // top of right side
+
+   localparam DIGIT_W = 10'd30;
+   localparam DIGIT_H = 10'd50;
 
    // -------------------------------------------------------
    // Centre circle distance squared
@@ -213,6 +221,83 @@ module vga_ball(
    assign puck_dx    = $signed({2'b00, px}) - $signed({2'b00, puck_x});
    assign puck_dy    = $signed({2'b00, py}) - $signed({2'b00, puck_y});
    assign puck_dist2 = puck_dx * puck_dx + puck_dy * puck_dy;
+
+
+      // -------------------------------------------------------
+   // Seven-segment score digit, supports 0-7
+   // local x range: 0..29
+   // local y range: 0..49
+   // -------------------------------------------------------
+
+   function automatic logic score_digit_on(
+      input logic [2:0] digit,
+      input logic [9:0] x,
+      input logic [9:0] y
+   );
+      logic a, b, c, d, e, f, g;
+      logic seg_a, seg_b, seg_c, seg_d, seg_e, seg_f, seg_g;
+   begin
+      // Segment geometry
+      seg_a = (y < 10'd5)  && (x >= 10'd5)  && (x < 10'd25);
+      seg_b = (x >= 10'd25) && (x < 10'd30) && (y >= 10'd5)  && (y < 10'd23);
+      seg_c = (x >= 10'd25) && (x < 10'd30) && (y >= 10'd27) && (y < 10'd45);
+      seg_d = (y >= 10'd45) && (y < 10'd50) && (x >= 10'd5)  && (x < 10'd25);
+      seg_e = (x < 10'd5)  && (y >= 10'd27) && (y < 10'd45);
+      seg_f = (x < 10'd5)  && (y >= 10'd5)  && (y < 10'd23);
+      seg_g = (y >= 10'd23) && (y < 10'd28) && (x >= 10'd5)  && (x < 10'd25);
+
+      // Default: all segments off
+      a = 1'b0;
+      b = 1'b0;
+      c = 1'b0;
+      d = 1'b0;
+      e = 1'b0;
+      f = 1'b0;
+      g = 1'b0;
+
+      case (digit)
+         3'd0: begin a=1; b=1; c=1; d=1; e=1; f=1; g=0; end
+         3'd1: begin a=0; b=1; c=1; d=0; e=0; f=0; g=0; end
+         3'd2: begin a=1; b=1; c=0; d=1; e=1; f=0; g=1; end
+         3'd3: begin a=1; b=1; c=1; d=1; e=0; f=0; g=1; end
+         3'd4: begin a=0; b=1; c=1; d=0; e=0; f=1; g=1; end
+         3'd5: begin a=1; b=0; c=1; d=1; e=0; f=1; g=1; end
+         3'd6: begin a=1; b=0; c=1; d=1; e=1; f=1; g=1; end
+         3'd7: begin a=1; b=1; c=1; d=0; e=0; f=0; g=0; end
+         default: begin a=0; b=0; c=0; d=0; e=0; f=0; g=0; end
+      endcase
+
+      score_digit_on =
+         (a && seg_a) ||
+         (b && seg_b) ||
+         (c && seg_c) ||
+         (d && seg_d) ||
+         (e && seg_e) ||
+         (f && seg_f) ||
+         (g && seg_g);
+   end
+   endfunction
+
+      // -------------------------------------------------------
+   // Score display pixel detection
+   // -------------------------------------------------------
+
+   logic p1_score_on, p2_score_on;
+
+   always_comb begin
+      p1_score_on = 1'b0;
+      p2_score_on = 1'b0;
+
+      if (px >= P1_SCORE_X && px < P1_SCORE_X + DIGIT_W &&
+          py >= SCORE_Y    && py < SCORE_Y + DIGIT_H) begin
+         p1_score_on = score_digit_on(score_p1, px - P1_SCORE_X, py - SCORE_Y);
+      end
+
+      if (px >= P2_SCORE_X && px < P2_SCORE_X + DIGIT_W &&
+          py >= SCORE_Y    && py < SCORE_Y + DIGIT_H) begin
+         p2_score_on = score_digit_on(score_p2, px - P2_SCORE_X, py - SCORE_Y);
+      end
+   end
 
    // -------------------------------------------------------
    // VGA renderer
@@ -258,6 +343,13 @@ module vga_ball(
          // 8. Puck, yellow
          if (puck_dist2 <= PUCK_R2)
             {VGA_R, VGA_G, VGA_B} = 24'hFFFF00;
+
+         // Score display, drawn on top
+         if (p1_score_on)
+            {VGA_R, VGA_G, VGA_B} = 24'hFF0000;
+
+         if (p2_score_on)
+            {VGA_R, VGA_G, VGA_B} = 24'h0000FF;
       end
    end
 
