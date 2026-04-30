@@ -66,8 +66,7 @@ module vga_ball(
    logic [9:0] p1_x, p1_y;
    logic [9:0] p2_x, p2_y;
 
-   // Included to match the design doc interface.
-   // Not rendered yet if you are only doing paddles for now.
+   //puck position register
    logic [9:0] puck_x, puck_y;
 
    logic [2:0] score_p1, score_p2;
@@ -169,7 +168,8 @@ module vga_ball(
    localparam C_LO = 24'd2116;  // 46^2
    localparam C_HI = 24'd2916;  // 54^2
 
-   localparam PADDLE_R2 = 24'd900;  // radius 20 px
+   localparam PADDLE_R2 = 24'd900;  // radius 30 px
+   localparam PUCK_R2   = 24'd400;  // puck radius 20 px
 
    // -------------------------------------------------------
    // Centre circle distance squared
@@ -203,6 +203,16 @@ module vga_ball(
    assign p2dx    = $signed({2'b00, px}) - $signed({2'b00, p2_x});
    assign p2dy    = $signed({2'b00, py}) - $signed({2'b00, p2_y});
    assign p2dist2 = p2dx * p2dx + p2dy * p2dy;
+   // -------------------------------------------------------
+   // Puck distance squared
+   // -------------------------------------------------------
+
+   logic signed [11:0] puck_dx, puck_dy;
+   logic [23:0] puck_dist2;
+
+   assign puck_dx    = $signed({2'b00, px}) - $signed({2'b00, puck_x});
+   assign puck_dy    = $signed({2'b00, py}) - $signed({2'b00, puck_y});
+   assign puck_dist2 = puck_dx * puck_dx + puck_dy * puck_dy;
 
    // -------------------------------------------------------
    // VGA renderer
@@ -244,6 +254,10 @@ module vga_ball(
          // 7. Player 2 paddle, blue
          if (p2dist2 <= PADDLE_R2)
             {VGA_R, VGA_G, VGA_B} = 24'h0000FF;
+
+         // 8. Puck, yellow
+         if (puck_dist2 <= PUCK_R2)
+            {VGA_R, VGA_G, VGA_B} = 24'hFFFF00;
       end
    end
 
