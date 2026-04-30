@@ -10,8 +10,6 @@ soc_system/
 *.sdc
 *.sopcinfo
 *.dts
-*.dtb
-*.rbf
 *.sof
 *.rpt
 *.summary
