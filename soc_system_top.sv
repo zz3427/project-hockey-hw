@@ -41,9 +41,11 @@ module soc_system_top(
  ///////// AUD /////////
  input         AUD_ADCDAT,
  inout         AUD_ADCLRCK,
- inout         AUD_BCLK,
+ //inout         AUD_BCLK,
+ output        AUD_BCLK,
  output        AUD_DACDAT,
- inout         AUD_DACLRCK,
+ //inout         AUD_DACLRCK,
+ output        AUD_DACLRCK,
  output        AUD_XCK,
 
  ///////// CLOCK2 /////////
@@ -315,8 +317,14 @@ module soc_system_top(
 
    assign FAN_CTRL = SW[0];
 
-   assign FPGA_I2C_SCLK = SW[0];
-   assign FPGA_I2C_SDAT = SW[1] ? SW[0] : 1'bZ;
+   //assign FPGA_I2C_SCLK = SW[0];
+   //assign FPGA_I2C_SDAT = SW[1] ? SW[0] : 1'bZ;
+   wm8731_config audio_codec_config (
+    .clk50(CLOCK_50),
+    .reset(1'b0),
+    .I2C_SCLK(FPGA_I2C_SCLK),
+    .I2C_SDAT(FPGA_I2C_SDAT)
+  );
 
    assign GPIO_0 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
    //assign GPIO_0[0]    = sound_out;
@@ -429,6 +437,281 @@ module simple_audio_out(
                AUD_DACDAT <= 1'b0;
             end
          end
+      end
+   end
+
+endmodule
+
+
+// -------------------------------------------------------
+// WM8731 audio codec I2C configuration
+//
+// Sends a basic startup sequence to the DE1-SoC audio codec.
+// This enables DAC output so AUD_DACDAT/AUD_BCLK/AUD_DACLRCK
+// can produce sound through the AUX/headphone jack.
+// -------------------------------------------------------
+module wm8731_config(
+   input  logic clk50,
+   input  logic reset,
+
+   output logic I2C_SCLK,
+   inout        I2C_SDAT
+);
+
+   // WM8731 7-bit I2C address is usually 0x1A.
+   localparam [6:0] CODEC_ADDR = 7'h1A;
+
+   // I2C clock divider: 50 MHz / 500 = 100 kHz-ish
+   localparam integer CLK_DIV = 250;
+
+   logic [15:0] clk_count;
+   logic tick;
+
+   always_ff @(posedge clk50 or posedge reset) begin
+      if (reset) begin
+         clk_count <= 16'd0;
+         tick <= 1'b0;
+      end else begin
+         if (clk_count == CLK_DIV - 1) begin
+            clk_count <= 16'd0;
+            tick <= 1'b1;
+         end else begin
+            clk_count <= clk_count + 16'd1;
+            tick <= 1'b0;
+         end
+      end
+   end
+
+   // Open-drain style I2C data line
+   logic sdat_out_en;
+   logic sdat_out;
+
+   assign I2C_SDAT = sdat_out_en ? sdat_out : 1'bZ;
+
+   // We drive SCLK directly.
+   // Idle high.
+   logic scl;
+
+   assign I2C_SCLK = scl;
+
+   // WM8731 register write format:
+   // First byte:  {7-bit device address, write bit 0}
+   // Then 16 data bits:
+   //   [15:9] register address
+   //   [8:0]  register data
+   //
+   // Common config sequence:
+   // R15 reset
+   // R6  power up
+   // R4  analog path: DAC select
+   // R5  digital path
+   // R7  digital audio interface: I2S, 16-bit
+   // R8  sampling control
+   // R9  active
+
+   logic [3:0] rom_index;
+   logic [15:0] rom_data;
+
+   always_comb begin
+      case (rom_index)
+         4'd0: rom_data = {7'd15, 9'h000}; // reset
+         4'd1: rom_data = {7'd6,  9'h000}; // power up everything
+         4'd2: rom_data = {7'd2,  9'h079}; // left headphone volume
+         4'd3: rom_data = {7'd3,  9'h079}; // right headphone volume
+         4'd4: rom_data = {7'd4,  9'h012}; // analog path: DAC selected
+         4'd5: rom_data = {7'd5,  9'h000}; // digital path
+         4'd6: rom_data = {7'd7,  9'h002}; // I2S, 16-bit
+         4'd7: rom_data = {7'd8,  9'h000}; // normal mode sampling
+         4'd8: rom_data = {7'd9,  9'h001}; // activate codec
+         default: rom_data = 16'h0000;
+      endcase
+   end
+
+   typedef enum logic [4:0] {
+      ST_IDLE,
+      ST_START_1,
+      ST_START_2,
+      ST_SEND_ADDR,
+      ST_ACK_ADDR,
+      ST_SEND_HIGH,
+      ST_ACK_HIGH,
+      ST_SEND_LOW,
+      ST_ACK_LOW,
+      ST_STOP_1,
+      ST_STOP_2,
+      ST_DONE
+   } state_t;
+
+   state_t state;
+
+   logic [7:0] byte_to_send;
+   logic [2:0] bit_index;
+   logic phase;
+   logic [15:0] wait_count;
+
+   always_ff @(posedge clk50 or posedge reset) begin
+      if (reset) begin
+         state <= ST_IDLE;
+         rom_index <= 4'd0;
+         scl <= 1'b1;
+         sdat_out_en <= 1'b1;
+         sdat_out <= 1'b1;
+         byte_to_send <= 8'd0;
+         bit_index <= 3'd7;
+         phase <= 1'b0;
+         wait_count <= 16'd0;
+      end else if (tick) begin
+         case (state)
+
+            ST_IDLE: begin
+               scl <= 1'b1;
+               sdat_out_en <= 1'b1;
+               sdat_out <= 1'b1;
+               wait_count <= wait_count + 16'd1;
+
+               // Small startup delay
+               if (wait_count == 16'd1000) begin
+                  wait_count <= 16'd0;
+                  state <= ST_START_1;
+               end
+            end
+
+            // I2C start: SDA goes low while SCL high
+            ST_START_1: begin
+               scl <= 1'b1;
+               sdat_out_en <= 1'b1;
+               sdat_out <= 1'b0;
+               state <= ST_START_2;
+            end
+
+            ST_START_2: begin
+               scl <= 1'b0;
+               byte_to_send <= {CODEC_ADDR, 1'b0}; // write
+               bit_index <= 3'd7;
+               phase <= 1'b0;
+               state <= ST_SEND_ADDR;
+            end
+
+            ST_SEND_ADDR: begin
+               if (phase == 1'b0) begin
+                  scl <= 1'b0;
+                  sdat_out_en <= 1'b1;
+                  sdat_out <= byte_to_send[bit_index];
+                  phase <= 1'b1;
+               end else begin
+                  scl <= 1'b1;
+                  phase <= 1'b0;
+                  if (bit_index == 3'd0)
+                     state <= ST_ACK_ADDR;
+                  else
+                     bit_index <= bit_index - 3'd1;
+               end
+            end
+
+            ST_ACK_ADDR: begin
+               if (phase == 1'b0) begin
+                  scl <= 1'b0;
+                  sdat_out_en <= 1'b0; // release SDA for ACK
+                  phase <= 1'b1;
+               end else begin
+                  scl <= 1'b1;
+                  phase <= 1'b0;
+                  byte_to_send <= rom_data[15:8];
+                  bit_index <= 3'd7;
+                  state <= ST_SEND_HIGH;
+               end
+            end
+
+            ST_SEND_HIGH: begin
+               if (phase == 1'b0) begin
+                  scl <= 1'b0;
+                  sdat_out_en <= 1'b1;
+                  sdat_out <= byte_to_send[bit_index];
+                  phase <= 1'b1;
+               end else begin
+                  scl <= 1'b1;
+                  phase <= 1'b0;
+                  if (bit_index == 3'd0)
+                     state <= ST_ACK_HIGH;
+                  else
+                     bit_index <= bit_index - 3'd1;
+               end
+            end
+
+            ST_ACK_HIGH: begin
+               if (phase == 1'b0) begin
+                  scl <= 1'b0;
+                  sdat_out_en <= 1'b0;
+                  phase <= 1'b1;
+               end else begin
+                  scl <= 1'b1;
+                  phase <= 1'b0;
+                  byte_to_send <= rom_data[7:0];
+                  bit_index <= 3'd7;
+                  state <= ST_SEND_LOW;
+               end
+            end
+
+            ST_SEND_LOW: begin
+               if (phase == 1'b0) begin
+                  scl <= 1'b0;
+                  sdat_out_en <= 1'b1;
+                  sdat_out <= byte_to_send[bit_index];
+                  phase <= 1'b1;
+               end else begin
+                  scl <= 1'b1;
+                  phase <= 1'b0;
+                  if (bit_index == 3'd0)
+                     state <= ST_ACK_LOW;
+                  else
+                     bit_index <= bit_index - 3'd1;
+               end
+            end
+
+            ST_ACK_LOW: begin
+               if (phase == 1'b0) begin
+                  scl <= 1'b0;
+                  sdat_out_en <= 1'b0;
+                  phase <= 1'b1;
+               end else begin
+                  scl <= 1'b1;
+                  phase <= 1'b0;
+                  state <= ST_STOP_1;
+               end
+            end
+
+            // I2C stop: SDA goes high while SCL high
+            ST_STOP_1: begin
+               scl <= 1'b0;
+               sdat_out_en <= 1'b1;
+               sdat_out <= 1'b0;
+               state <= ST_STOP_2;
+            end
+
+            ST_STOP_2: begin
+               scl <= 1'b1;
+               sdat_out_en <= 1'b1;
+               sdat_out <= 1'b1;
+
+               if (rom_index == 4'd8) begin
+                  state <= ST_DONE;
+               end else begin
+                  rom_index <= rom_index + 4'd1;
+                  state <= ST_START_1;
+               end
+            end
+
+            ST_DONE: begin
+               scl <= 1'b1;
+               sdat_out_en <= 1'b1;
+               sdat_out <= 1'b1;
+            end
+
+            default: begin
+               state <= ST_IDLE;
+            end
+
+         endcase
       end
    end
 
