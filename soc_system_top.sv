@@ -193,6 +193,16 @@ module soc_system_top(
 
    logic sound_out;
 
+   logic signed [15:0] audio_sample;
+   logic sound_out_prev;
+   logic sound_trigger;
+
+   always_ff @(posedge CLOCK_50) begin
+     sound_out_prev <= sound_out;
+   end
+
+   assign sound_trigger = sound_out && !sound_out_prev;
+
    soc_system soc_system0(
      .clk_clk                      ( CLOCK_50 ),
      .reset_reset_n                ( 1'b1 ),
@@ -298,11 +308,21 @@ module soc_system_top(
 
    assign AUD_ADCLRCK = 1'bZ;
 
+  sample_player #(
+    .SAMPLE_COUNT(3119)
+  ) paddle_player (
+    .clk50(CLOCK_50),
+    .reset(1'b0),
+    .trigger(sound_trigger),
+    .sample(audio_sample)
+  );
+
+
 // Simple AUX/audio-jack test output
   simple_audio_out audio_out (
     .clk50(CLOCK_50),
     .reset(1'b0),
-    .tone_in(sound_out),
+    .audio_sample(audio_sample),
     .AUD_XCK(AUD_XCK),
     .AUD_BCLK(AUD_BCLK),
     .AUD_DACLRCK(AUD_DACLRCK),
@@ -367,7 +387,8 @@ endmodule
 module simple_audio_out(
    input  logic clk50,
    input  logic reset,
-   input  logic tone_in,
+  //  input  logic tone_in,
+   input logic signed [15:0] audio_sample,
 
    output logic AUD_XCK,
    output logic AUD_BCLK,
@@ -401,14 +422,14 @@ module simple_audio_out(
    // Create a simple 16-bit audio sample.
    // If tone_in = 1, output positive amplitude.
    // If tone_in = 0, output negative amplitude.
-   logic signed [15:0] sample;
+  //  logic signed [15:0] sample;
 
-   always_comb begin
-      if (tone_in)
-         sample = 16'sh3000;
-      else
-         sample = -16'sh3000;
-   end
+  //  always_comb begin
+  //     if (tone_in)
+  //        sample = 16'sh3000;
+  //     else
+  //        sample = -16'sh3000;
+  //  end
 
    // Shift out the sample bits on BCLK.
    logic [4:0] bit_index;
@@ -426,7 +447,7 @@ module simple_audio_out(
 
          // Load a new sample at left/right clock transition
          if (last_lrck != AUD_DACLRCK) begin
-            shift_reg <= sample;
+            shift_reg <= audio_sample;
             bit_index <= 5'd0;
          end else begin
             if (bit_index < 5'd16) begin
@@ -712,6 +733,61 @@ module wm8731_config(
             end
 
          endcase
+      end
+   end
+
+endmodule
+
+module sample_player #(
+   parameter SAMPLE_COUNT = 8000
+)(
+   input  logic clk50,
+   input  logic reset,
+   input  logic trigger,
+
+   output logic signed [15:0] sample
+);
+
+   localparam integer SAMPLE_DIV = 3125; // 50 MHz / 16000 Hz
+
+   logic [15:0] sample_rom [0:SAMPLE_COUNT-1];
+   logic [31:0] div_count;
+   logic [$clog2(SAMPLE_COUNT)-1:0] index;
+   logic playing;
+
+   initial begin
+      $readmemh("sounds/paddle.mem", sample_rom);
+   end
+
+   always_ff @(posedge clk50 or posedge reset) begin
+      if (reset) begin
+         div_count <= 32'd0;
+         index <= '0;
+         sample <= 16'sd0;
+         playing <= 1'b0;
+      end else begin
+         if (trigger && !playing) begin
+            playing <= 1'b1;
+            index <= '0;
+            div_count <= 32'd0;
+            sample <= sample_rom[0];
+         end else if (playing) begin
+            if (div_count == SAMPLE_DIV - 1) begin
+               div_count <= 32'd0;
+               sample <= sample_rom[index];
+
+               if (index == SAMPLE_COUNT - 1) begin
+                  playing <= 1'b0;
+                  sample <= 16'sd0;
+               end else begin
+                  index <= index + 1'b1;
+               end
+            end else begin
+               div_count <= div_count + 1'b1;
+            end
+         end else begin
+            sample <= 16'sd0;
+         end
       end
    end
 
