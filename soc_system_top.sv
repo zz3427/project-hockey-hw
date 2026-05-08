@@ -189,6 +189,8 @@ module soc_system_top(
  output        VGA_VS
 );
 
+   logic sound_out;
+
    soc_system soc_system0(
      .clk_clk                      ( CLOCK_50 ),
      .reset_reset_n                ( 1'b1 ),
@@ -274,7 +276,9 @@ module soc_system_top(
 .vga_hs (VGA_HS),
 .vga_vs (VGA_VS),
 .vga_blank_n (VGA_BLANK_N),
-.vga_sync_n (VGA_SYNC_N)
+.vga_sync_n (VGA_SYNC_N),
+
+.sound_sound_out (sound_out)
   );
 
    // The following quiet the "no driver" warnings for output
@@ -301,8 +305,10 @@ module soc_system_top(
    assign FPGA_I2C_SCLK = SW[0];
    assign FPGA_I2C_SDAT = SW[1] ? SW[0] : 1'bZ;
 
-   assign GPIO_0 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
-   assign GPIO_1 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };   
+   //assign GPIO_0 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
+   assign GPIO_0[0]    = sound_out;
+   assign GPIO_0[35:1] = SW[1] ? { 35{ SW[0] } } : { 35{ 1'bZ } };
+   assign GPIO_1 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
 
    assign HEX0 = { 7{ SW[1] } };
    assign HEX1 = { 7{ SW[2] } };

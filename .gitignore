@@ -4,6 +4,9 @@ incremental_db/
 output_files/
 soc_system/
 .qsys_edit/
+hps_isw_handoff/
+c5_pin_model_dump.txt
+hps_sdram_p0_summary.csv
 
 *.qpf
 *.qsf

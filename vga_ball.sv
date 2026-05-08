@@ -44,7 +44,9 @@ module vga_ball(
    output logic [7:0]  VGA_R, VGA_G, VGA_B,
    output logic        VGA_CLK, VGA_HS, VGA_VS,
                        VGA_BLANK_n,
-   output logic        VGA_SYNC_n
+   output logic        VGA_SYNC_n,
+
+   output logic        SOUND_OUT
 );
 
 
@@ -223,7 +225,20 @@ module vga_ball(
    assign puck_dist2 = puck_dx * puck_dx + puck_dy * puck_dy;
 
 
-      // -------------------------------------------------------
+   // -------------------------------------------------------
+   // Sound generator
+   // -------------------------------------------------------
+
+   sound_generator sound_gen (
+      .clk(clk),
+      .reset(reset),
+      .event_valid(chipselect && write && address == 3'd1),
+      .event_code(writedata[2:0]),
+      .sound_out(SOUND_OUT)
+   );
+
+
+   // -------------------------------------------------------
    // Seven-segment score digit, supports 0-7
    // local x range: 0..29
    // local y range: 0..49
@@ -408,3 +423,103 @@ module vga_counters(
 
 endmodule
 
+// -------------------------------------------------------
+// Simple sound generator
+// event_code:
+//   0 = no sound
+//   1 = puck hit wall
+//   2 = puck hit paddle
+//   3 = goal scored
+// -------------------------------------------------------
+module sound_generator(
+   input  logic       clk,
+   input  logic       reset,
+   input  logic       event_valid,
+   input  logic [2:0] event_code,
+   output logic       sound_out
+);
+
+   // Assuming 50 MHz clock
+   localparam [31:0] WALL_DUR   = 32'd2_500_000;   // 0.05 s
+   localparam [31:0] PADDLE_DUR = 32'd3_000_000;   // 0.06 s
+   localparam [31:0] GOAL_DUR   = 32'd25_000_000;  // 0.50 s
+
+   // Half-period counts for square-wave tone generation
+   // Smaller number = higher pitch
+   localparam [15:0] WALL_HALF_PERIOD   = 16'd35_714;  // about 700 Hz
+   localparam [15:0] PADDLE_HALF_PERIOD = 16'd25_000;  // about 1000 Hz
+   localparam [15:0] GOAL_HALF_PERIOD   = 16'd20_833;  // about 1200 Hz
+
+   logic [31:0] remaining;
+   logic [15:0] half_period;
+   logic [15:0] div_count;
+   logic        tone;
+
+   always_ff @(posedge clk or posedge reset) begin
+      if (reset) begin
+         remaining   <= 32'd0;
+         half_period <= 16'd0;
+         div_count   <= 16'd0;
+         tone        <= 1'b0;
+      end else begin
+
+         // New sound event immediately replaces the old one
+         if (event_valid) begin
+            case (event_code)
+
+               // 1: puck hit wall
+               3'd1: begin
+                  remaining   <= WALL_DUR;
+                  half_period <= WALL_HALF_PERIOD;
+                  div_count   <= WALL_HALF_PERIOD;
+                  tone        <= 1'b0;
+               end
+
+               // 2: puck hit paddle
+               3'd2: begin
+                  remaining   <= PADDLE_DUR;
+                  half_period <= PADDLE_HALF_PERIOD;
+                  div_count   <= PADDLE_HALF_PERIOD;
+                  tone        <= 1'b0;
+               end
+
+               // 3: goal scored
+               3'd3: begin
+                  remaining   <= GOAL_DUR;
+                  half_period <= GOAL_HALF_PERIOD;
+                  div_count   <= GOAL_HALF_PERIOD;
+                  tone        <= 1'b0;
+               end
+
+               // 0 or anything else: no sound
+               default: begin
+                  remaining   <= 32'd0;
+                  half_period <= 16'd0;
+                  div_count   <= 16'd0;
+                  tone        <= 1'b0;
+               end
+            endcase
+         end
+
+         // Continue current sound
+         else if (remaining != 32'd0) begin
+            remaining <= remaining - 32'd1;
+
+            if (div_count == 16'd0) begin
+               div_count <= half_period;
+               tone <= ~tone;
+            end else begin
+               div_count <= div_count - 16'd1;
+            end
+         end
+
+         // No active sound
+         else begin
+            tone <= 1'b0;
+         end
+      end
+   end
+
+   assign sound_out = tone;
+
+endmodule
