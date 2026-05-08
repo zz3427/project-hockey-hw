@@ -288,11 +288,24 @@ module soc_system_top(
    assign ADC_DIN = SW[0];
    assign ADC_SCLK = SW[0];
    
-   assign AUD_ADCLRCK = SW[1] ? SW[0] : 1'bZ;
-   assign AUD_BCLK = SW[1] ? SW[0] : 1'bZ;
-   assign AUD_DACDAT = SW[0];
-   assign AUD_DACLRCK = SW[1] ? SW[0] : 1'bZ;
-   assign AUD_XCK = SW[0];      
+   //assign AUD_ADCLRCK = SW[1] ? SW[0] : 1'bZ;
+   //assign AUD_BCLK = SW[1] ? SW[0] : 1'bZ;
+   //assign AUD_DACDAT = SW[0];
+   //assign AUD_DACLRCK = SW[1] ? SW[0] : 1'bZ;
+   //assign AUD_XCK = SW[0];      
+
+   assign AUD_ADCLRCK = 1'bZ;
+
+// Simple AUX/audio-jack test output
+  simple_audio_out audio_out (
+    .clk50(CLOCK_50),
+    .reset(1'b0),
+    .tone_in(sound_out),
+    .AUD_XCK(AUD_XCK),
+    .AUD_BCLK(AUD_BCLK),
+    .AUD_DACLRCK(AUD_DACLRCK),
+    .AUD_DACDAT(AUD_DACDAT)
+  );
 
    assign DRAM_ADDR = { 13{ SW[0] } };
    assign DRAM_BA = { 2{ SW[0] } };
@@ -305,9 +318,9 @@ module soc_system_top(
    assign FPGA_I2C_SCLK = SW[0];
    assign FPGA_I2C_SDAT = SW[1] ? SW[0] : 1'bZ;
 
-   //assign GPIO_0 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
-   assign GPIO_0[0]    = sound_out;
-   assign GPIO_0[35:1] = SW[1] ? { 35{ SW[0] } } : { 35{ 1'bZ } };
+   assign GPIO_0 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
+   //assign GPIO_0[0]    = sound_out;
+   //assign GPIO_0[35:1] = SW[1] ? { 35{ SW[0] } } : { 35{ 1'bZ } };
    assign GPIO_1 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
 
    assign HEX0 = { 7{ SW[1] } };
@@ -329,4 +342,94 @@ module soc_system_top(
    assign TD_RESET_N = SW[0];
 
                                                                   
+endmodule
+
+
+// -------------------------------------------------------
+// Simple audio output test module
+//
+// This converts a 1-bit tone signal into serial audio-style
+// output for the DE1-SoC audio codec pins.
+//
+// NOTE:
+// This assumes the audio codec is already configured.
+// If the codec is not configured through I2C, the AUX jack
+// may still be silent even if these signals toggle correctly.
+// -------------------------------------------------------
+module simple_audio_out(
+   input  logic clk50,
+   input  logic reset,
+   input  logic tone_in,
+
+   output logic AUD_XCK,
+   output logic AUD_BCLK,
+   output logic AUD_DACLRCK,
+   output logic AUD_DACDAT
+);
+
+   // Generate audio clocks from 50 MHz.
+   //
+   // Approximate:
+   // AUD_XCK    = 12.5 MHz
+   // AUD_BCLK   = ~1.56 MHz
+   // AUD_DACLRCK = ~48.8 kHz
+   //
+   // This is not perfect professional audio timing,
+   // but good enough for a first hardware test.
+
+   logic [9:0] div;
+
+   always_ff @(posedge clk50 or posedge reset) begin
+      if (reset)
+         div <= 10'd0;
+      else
+         div <= div + 10'd1;
+   end
+
+   assign AUD_XCK     = div[1];  // 50 MHz / 4 = 12.5 MHz
+   assign AUD_BCLK    = div[4];  // 50 MHz / 32 = 1.5625 MHz
+   assign AUD_DACLRCK = div[9];  // 50 MHz / 1024 = 48.8 kHz
+
+   // Create a simple 16-bit audio sample.
+   // If tone_in = 1, output positive amplitude.
+   // If tone_in = 0, output negative amplitude.
+   logic signed [15:0] sample;
+
+   always_comb begin
+      if (tone_in)
+         sample = 16'sh3000;
+      else
+         sample = -16'sh3000;
+   end
+
+   // Shift out the sample bits on BCLK.
+   logic [4:0] bit_index;
+   logic [15:0] shift_reg;
+   logic last_lrck;
+
+   always_ff @(posedge AUD_BCLK or posedge reset) begin
+      if (reset) begin
+         bit_index <= 5'd0;
+         shift_reg <= 16'd0;
+         AUD_DACDAT <= 1'b0;
+         last_lrck <= 1'b0;
+      end else begin
+         last_lrck <= AUD_DACLRCK;
+
+         // Load a new sample at left/right clock transition
+         if (last_lrck != AUD_DACLRCK) begin
+            shift_reg <= sample;
+            bit_index <= 5'd0;
+         end else begin
+            if (bit_index < 5'd16) begin
+               AUD_DACDAT <= shift_reg[15];
+               shift_reg <= {shift_reg[14:0], 1'b0};
+               bit_index <= bit_index + 5'd1;
+            end else begin
+               AUD_DACDAT <= 1'b0;
+            end
+         end
+      end
+   end
+
 endmodule
