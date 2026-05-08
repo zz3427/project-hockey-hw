@@ -191,17 +191,11 @@ module soc_system_top(
  output        VGA_VS
 );
 
-   logic sound_out;
 
+   logic sound_valid;
    logic signed [15:0] audio_sample;
-   logic sound_out_prev;
-   logic sound_trigger;
 
-   always_ff @(posedge CLOCK_50) begin
-     sound_out_prev <= sound_out;
-   end
-
-   assign sound_trigger = sound_out && !sound_out_prev;
+   wire sound_trigger = sound_valid;
 
    soc_system soc_system0(
      .clk_clk                      ( CLOCK_50 ),
@@ -290,7 +284,7 @@ module soc_system_top(
 .vga_blank_n (VGA_BLANK_N),
 .vga_sync_n (VGA_SYNC_N),
 
-.sound_sound_out (sound_out)
+.sound_sound_valid (sound_valid)
   );
 
    // The following quiet the "no driver" warnings for output
