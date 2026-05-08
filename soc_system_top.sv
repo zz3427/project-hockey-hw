@@ -309,7 +309,7 @@ module soc_system_top(
    assign AUD_ADCLRCK = 1'bZ;
 
   sample_player #(
-    .SAMPLE_COUNT(3119)
+    .SAMPLE_COUNT(9355)
   ) paddle_player (
     .clk50(CLOCK_50),
     .reset(1'b0),
@@ -387,8 +387,7 @@ endmodule
 module simple_audio_out(
    input  logic clk50,
    input  logic reset,
-  //  input  logic tone_in,
-   input logic signed [15:0] audio_sample,
+   input  logic signed [15:0] audio_sample,
 
    output logic AUD_XCK,
    output logic AUD_BCLK,
@@ -396,67 +395,45 @@ module simple_audio_out(
    output logic AUD_DACDAT
 );
 
-   // Generate audio clocks from 50 MHz.
-   //
-   // Approximate:
-   // AUD_XCK    = 12.5 MHz
-   // AUD_BCLK   = ~1.56 MHz
-   // AUD_DACLRCK = ~48.8 kHz
-   //
-   // This is not perfect professional audio timing,
-   // but good enough for a first hardware test.
-
    logic [9:0] div;
+   logic bclk_prev;
+   logic [4:0] bit_pos;
+   logic signed [15:0] frame_sample;
+
+   assign AUD_XCK  = div[1];   // 12.5 MHz
+   assign AUD_BCLK = div[4];   // 1.5625 MHz
+
+   wire bclk_falling = bclk_prev && !div[4];
 
    always_ff @(posedge clk50 or posedge reset) begin
-      if (reset)
-         div <= 10'd0;
-      else
-         div <= div + 10'd1;
-   end
-
-   assign AUD_XCK     = div[1];  // 50 MHz / 4 = 12.5 MHz
-   assign AUD_BCLK    = div[4];  // 50 MHz / 32 = 1.5625 MHz
-   assign AUD_DACLRCK = div[9];  // 50 MHz / 1024 = 48.8 kHz
-
-   // Create a simple 16-bit audio sample.
-   // If tone_in = 1, output positive amplitude.
-   // If tone_in = 0, output negative amplitude.
-  //  logic signed [15:0] sample;
-
-  //  always_comb begin
-  //     if (tone_in)
-  //        sample = 16'sh3000;
-  //     else
-  //        sample = -16'sh3000;
-  //  end
-
-   // Shift out the sample bits on BCLK.
-   logic [4:0] bit_index;
-   logic [15:0] shift_reg;
-   logic last_lrck;
-
-   always_ff @(posedge AUD_BCLK or posedge reset) begin
       if (reset) begin
-         bit_index <= 5'd0;
-         shift_reg <= 16'd0;
+         div <= 10'd0;
+         bclk_prev <= 1'b0;
+         bit_pos <= 5'd0;
+         frame_sample <= 16'sd0;
+         AUD_DACLRCK <= 1'b0;
          AUD_DACDAT <= 1'b0;
-         last_lrck <= 1'b0;
       end else begin
-         last_lrck <= AUD_DACLRCK;
+         div <= div + 10'd1;
+         bclk_prev <= div[4];
 
-         // Load a new sample at left/right clock transition
-         if (last_lrck != AUD_DACLRCK) begin
-            shift_reg <= audio_sample;
-            bit_index <= 5'd0;
-         end else begin
-            if (bit_index < 5'd16) begin
-               AUD_DACDAT <= shift_reg[15];
-               shift_reg <= {shift_reg[14:0], 1'b0};
-               bit_index <= bit_index + 5'd1;
-            end else begin
-               AUD_DACDAT <= 1'b0;
+         if (bclk_falling) begin
+            if (bit_pos == 5'd0) begin
+               frame_sample <= audio_sample;
             end
+
+            if (bit_pos < 5'd16) begin
+               AUD_DACLRCK <= 1'b0; // left channel
+               AUD_DACDAT <= frame_sample[15 - bit_pos];
+            end else begin
+               AUD_DACLRCK <= 1'b1; // right channel
+               AUD_DACDAT <= frame_sample[31 - bit_pos];
+            end
+
+            if (bit_pos == 5'd31)
+               bit_pos <= 5'd0;
+            else
+               bit_pos <= bit_pos + 5'd1;
          end
       end
    end
@@ -541,7 +518,7 @@ module wm8731_config(
          4'd3: rom_data = {7'd3,  9'h079}; // right headphone volume
          4'd4: rom_data = {7'd4,  9'h012}; // analog path: DAC selected
          4'd5: rom_data = {7'd5,  9'h000}; // digital path
-         4'd6: rom_data = {7'd7,  9'h002}; // I2S, 16-bit
+         4'd6: rom_data = {7'd7,  9'h000}; // I2S, 16-bit
          4'd7: rom_data = {7'd8,  9'h000}; // normal mode sampling
          4'd8: rom_data = {7'd9,  9'h001}; // activate codec
          default: rom_data = 16'h0000;
@@ -748,7 +725,7 @@ module sample_player #(
    output logic signed [15:0] sample
 );
 
-   localparam integer SAMPLE_DIV = 3125; // 50 MHz / 16000 Hz
+   localparam integer SAMPLE_DIV = 1024; 
 
    logic [15:0] sample_rom [0:SAMPLE_COUNT-1];
    logic [31:0] div_count;
