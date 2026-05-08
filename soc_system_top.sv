@@ -303,7 +303,7 @@ module soc_system_top(
    assign AUD_ADCLRCK = 1'bZ;
 
   sample_player #(
-    .SAMPLE_COUNT(9355)
+    .SAMPLE_COUNT(9516)
   ) paddle_player (
     .clk50(CLOCK_50),
     .reset(1'b0),
