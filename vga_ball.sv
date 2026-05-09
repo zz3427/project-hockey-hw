@@ -169,12 +169,28 @@ module vga_ball(
    localparam GT = 190;
    localparam GB = 290;
 
-   localparam C_LO = 24'd2116;  // 46^2
-   localparam C_HI = 24'd2916;  // 54^2
+   // Centre circles (two concentric rings)
+   localparam CCR_LO = 24'd756;   // inner red  ring: r ≈ 30, lo = 27.5²
+   localparam CCR_HI = 24'd1056;  //                  hi = 32.5²
+   localparam CCB_LO = 24'd2756;  // outer blue ring: r ≈ 55, lo = 52.5²
+   localparam CCB_HI = 24'd3306;  //                  hi = 57.5²
 
-   localparam PADDLE_R2 = 24'd900;  // radius 30 px
-   localparam PUCK_R2   = 24'd400;  // puck radius 20 px
-    
+   // Goal arcs: circle centred at left/right wall mid, r = 90 ± 3 px
+   localparam ARC_LO = 24'd7569;  // 87²
+   localparam ARC_HI = 24'd8649;  // 93²
+
+   // Paddle dome: 2-level radial gradient (r² thresholds)
+   localparam PAD_L1 = 24'd196;    // r ≤  14  bright
+   localparam PAD_L2 = 24'd256;   // r ≤ 16  inside border
+   localparam PAD_L3 = 24'd784;  // r ≤ 28  dark
+   localparam PAD_R2 = 24'd900;  // r ≤ 30  border
+
+   // Puck dome: 2-level radial gradient (r² thresholds)
+   localparam PUCK_L1 = 24'd256;   // r ≤  16  bright
+   localparam PUCK_L2 = 24'd289;  // r ≤ 17  inside border
+   localparam PUCK_L3 = 24'd361;  // r ≤ 19  dark
+   localparam PUCK_R2 = 24'd400;  // r ≤ 20  border
+
    // Score display positions
    localparam SCORE_Y  = 10'd30;
    localparam P1_SCORE_X = 10'd145;  // top of left side
@@ -226,6 +242,21 @@ module vga_ball(
    assign puck_dy    = $signed({2'b00, py}) - $signed({2'b00, puck_y});
    assign puck_dist2 = puck_dx * puck_dx + puck_dy * puck_dy;
 
+   // -------------------------------------------------------
+   // Goal arc distance squared (centre = wall mid-point, r = 90 px)
+   // -------------------------------------------------------
+
+   logic signed [11:0] lax, lay;
+   logic [23:0] larc_dist2;
+   assign lax       = $signed({2'b00, px}) - 12'sd10;
+   assign lay       = $signed({2'b00, py}) - 12'sd240;
+   assign larc_dist2 = lax * lax + lay * lay;
+
+   logic signed [11:0] rax, ray;
+   logic [23:0] rarc_dist2;
+   assign rax       = $signed({2'b00, px}) - 12'sd629;
+   assign ray       = $signed({2'b00, py}) - 12'sd240;
+   assign rarc_dist2 = rax * rax + ray * ray;
 
    // -------------------------------------------------------
    // Sound event pulse
@@ -330,48 +361,64 @@ module vga_ball(
 
       if (VGA_BLANK_n) begin
 
-         // 1. Navy blue border/background
-         {VGA_R, VGA_G, VGA_B} = 24'h1a1a2e;
+         // 1. Dark board border
+         {VGA_R, VGA_G, VGA_B} = 24'h222222;
 
          // 2. Ice surface inside walls
          if (px >= WL + WW && px <= WR - WW &&
              py >= WT + WW && py <= WB - WW)
-            {VGA_R, VGA_G, VGA_B} = 24'hC8E8FF;
+            {VGA_R, VGA_G, VGA_B} = 24'hF0F4FF;
 
-         // 3. Goal zones
+         // 3. Goal slot openings in wall
          if (px >= WL && px < WL + WW && py > GT && py < GB)
-            {VGA_R, VGA_G, VGA_B} = 24'hFF8080;
-
+            {VGA_R, VGA_G, VGA_B} = 24'hCC1414;
          if (px > WR - WW && px <= WR && py > GT && py < GB)
-            {VGA_R, VGA_G, VGA_B} = 24'h8080FF;
+            {VGA_R, VGA_G, VGA_B} = 24'h1432CC;
 
-         // 4. Centre line
+         // 4. Goal arcs (ring centred on wall mid, r = 90 px)
+         if (larc_dist2 >= ARC_LO && larc_dist2 <= ARC_HI && px >= WL + WW)
+            {VGA_R, VGA_G, VGA_B} = 24'hCC1414;
+         if (rarc_dist2 >= ARC_LO && rarc_dist2 <= ARC_HI && px <= WR - WW)
+            {VGA_R, VGA_G, VGA_B} = 24'h1432CC;
+
+         // 5. Centre line (red)
          if ((px == 319 || px == 320) &&
              py >= WT + WW && py <= WB - WW)
-            {VGA_R, VGA_G, VGA_B} = 24'hFFFFFF;
+            {VGA_R, VGA_G, VGA_B} = 24'hCC2020;
 
-         // 5. Centre circle ring
-         if (cdist2 >= C_LO && cdist2 <= C_HI)
-            {VGA_R, VGA_G, VGA_B} = 24'hFFFFFF;
+         // 6. Centre circles: inner red ring, outer blue ring
+         if (cdist2 >= CCR_LO && cdist2 <= CCR_HI)
+            {VGA_R, VGA_G, VGA_B} = 24'hCC2020;
+         if (cdist2 >= CCB_LO && cdist2 <= CCB_HI)
+            {VGA_R, VGA_G, VGA_B} = 24'h2020CC;
 
-         // 6. Player 1 paddle, red
-         if (p1dist2 <= PADDLE_R2)
-            {VGA_R, VGA_G, VGA_B} = 24'hFF0000;
+         // 7. Puck: 2-level gray radial dome
+         if (puck_dist2 <= PUCK_R2) begin
+            if      (puck_dist2 <= PUCK_L1) {VGA_R, VGA_G, VGA_B} = 24'h484848;
+            else if (puck_dist2 <= PUCK_L2) {VGA_R, VGA_G, VGA_B} = 24'h000000;
+            else if (puck_dist2 <= PUCK_L3) {VGA_R, VGA_G, VGA_B} = 24'h484848;
+            else                             {VGA_R, VGA_G, VGA_B} = 24'h000000;
+         end
 
-         // 7. Player 2 paddle, blue
-         if (p2dist2 <= PADDLE_R2)
-            {VGA_R, VGA_G, VGA_B} = 24'h0000FF;
+         // 8. Paddle 1: 2-level red radial dome
+         if (p1dist2 <= PAD_R2) begin
+            if      (p1dist2 <= PAD_L1) {VGA_R, VGA_G, VGA_B} = 24'hFF2200;
+            else if (p1dist2 <= PAD_L2) {VGA_R, VGA_G, VGA_B} = 24'h000000;
+            else if (p1dist2 <= PAD_L3) {VGA_R, VGA_G, VGA_B} = 24'hCC1100;
+            else                         {VGA_R, VGA_G, VGA_B} = 24'h000000;
+         end
 
-         // 8. Puck, yellow
-         if (puck_dist2 <= PUCK_R2)
-            {VGA_R, VGA_G, VGA_B} = 24'hFFFF00;
+         // 9. Paddle 2: 2-level blue radial dome
+         if (p2dist2 <= PAD_R2) begin
+            if      (p2dist2 <= PAD_L1) {VGA_R, VGA_G, VGA_B} = 24'h0033FF;
+            else if (p2dist2 <= PAD_L2) {VGA_R, VGA_G, VGA_B} = 24'h000000;
+            else if (p2dist2 <= PAD_L3) {VGA_R, VGA_G, VGA_B} = 24'h0020CC;
+            else                         {VGA_R, VGA_G, VGA_B} = 24'h000000;
+         end
 
-         // Score display, drawn on top
-         if (p1_score_on)
-            {VGA_R, VGA_G, VGA_B} = 24'hFF0000;
-
-         if (p2_score_on)
-            {VGA_R, VGA_G, VGA_B} = 24'h0000FF;
+         // 10. Score display: red for P1, blue for P2
+         if (p1_score_on) {VGA_R, VGA_G, VGA_B} = 24'hFF2200;
+         if (p2_score_on) {VGA_R, VGA_G, VGA_B} = 24'h0033FF;
       end
    end
 
