@@ -421,7 +421,8 @@ module simple_audio_out(
                AUD_DACDAT <= frame_sample[15 - bit_pos];
             end else begin
                AUD_DACLRCK <= 1'b1; // right channel
-               AUD_DACDAT <= frame_sample[31 - bit_pos];
+               //AUD_DACDAT <= frame_sample[31 - bit_pos];
+               AUD_DACDAT <= 1'b0;  // mute right channel to remove static
             end
 
             if (bit_pos == 5'd31)
@@ -508,7 +509,7 @@ module wm8731_config(
       case (rom_index)
          4'd0: rom_data = {7'd15, 9'h000}; // reset
          4'd1: rom_data = {7'd6,  9'h000}; // power up everything
-         4'd2: rom_data = {7'd2,  9'h060}; // left headphone volume
+         4'd2: rom_data = {7'd2,  9'h075}; // left headphone volume
          4'd3: rom_data = {7'd3,  9'h060}; // right headphone volume
          4'd4: rom_data = {7'd4,  9'h012}; // analog path: DAC selected
          4'd5: rom_data = {7'd5,  9'h000}; // digital path
