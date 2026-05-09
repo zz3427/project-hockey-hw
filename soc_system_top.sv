@@ -193,6 +193,7 @@ module soc_system_top(
 
 
    logic sound_valid;
+   logic [2:0] sound_code;
    logic signed [15:0] audio_sample;
 
    wire sound_trigger = sound_valid;
@@ -284,7 +285,8 @@ module soc_system_top(
 .vga_blank_n (VGA_BLANK_N),
 .vga_sync_n (VGA_SYNC_N),
 
-.sound_sound_valid (sound_valid)
+.sound_sound_valid (sound_valid),
+.sound_sound_code  (sound_code)
   );
 
    // The following quiet the "no driver" warnings for output
@@ -302,12 +304,20 @@ module soc_system_top(
 
    assign AUD_ADCLRCK = 1'bZ;
 
-  sample_player #(
-    .SAMPLE_COUNT(9516)
-  ) paddle_player (
+//   sample_player #(
+//     .SAMPLE_COUNT(9516)
+//   ) paddle_player (
+//     .clk50(CLOCK_50),
+//     .reset(1'b0),
+//     .trigger(sound_trigger),
+//     .sample(audio_sample)
+//   );
+
+  sample_player multi_sound_player (
     .clk50(CLOCK_50),
     .reset(1'b0),
     .trigger(sound_trigger),
+    .sound_code(sound_code),
     .sample(audio_sample)
   );
 
@@ -710,52 +720,132 @@ module wm8731_config(
 
 endmodule
 
-module sample_player #(
-   parameter SAMPLE_COUNT = 8000
-)(
+// module sample_player #(
+//    parameter SAMPLE_COUNT = 8000
+// )(
+//    input  logic clk50,
+//    input  logic reset,
+//    input  logic trigger,
+
+//    output logic signed [15:0] sample
+// );
+
+//    localparam integer SAMPLE_DIV = 1024; 
+
+//    logic [15:0] sample_rom [0:SAMPLE_COUNT-1];
+//    logic [31:0] div_count;
+//    logic [$clog2(SAMPLE_COUNT)-1:0] index;
+//    logic playing;
+
+//    initial begin
+//       $readmemh("sounds/paddle.mem", sample_rom);
+//    end
+
+//    always_ff @(posedge clk50 or posedge reset) begin
+//       if (reset) begin
+//          div_count <= 32'd0;
+//          index <= '0;
+//          sample <= 16'sd0;
+//          playing <= 1'b0;
+//       end else begin
+//          if (trigger && !playing) begin
+//             playing <= 1'b1;
+//             index <= '0;
+//             div_count <= 32'd0;
+//             sample <= sample_rom[0];
+//          end else if (playing) begin
+//             if (div_count == SAMPLE_DIV - 1) begin
+//                div_count <= 32'd0;
+//                sample <= sample_rom[index];
+
+//                if (index == SAMPLE_COUNT - 1) begin
+//                   playing <= 1'b0;
+//                   sample <= 16'sd0;
+//                end else begin
+//                   index <= index + 1'b1;
+//                end
+//             end else begin
+//                div_count <= div_count + 1'b1;
+//             end
+//          end else begin
+//             sample <= 16'sd0;
+//          end
+//       end
+//    end
+
+// endmodule
+
+module sample_player(
    input  logic clk50,
    input  logic reset,
    input  logic trigger,
+   input  logic [2:0] sound_code,
 
    output logic signed [15:0] sample
 );
 
-   localparam integer SAMPLE_DIV = 1024; 
+   localparam integer SAMPLE_DIV = 1024;
 
-   logic [15:0] sample_rom [0:SAMPLE_COUNT-1];
+   localparam integer WALL_COUNT   = 3826;
+   localparam integer PADDLE_COUNT = 9516;
+   localparam integer SCORE_COUNT  = 26785;
+
+   logic [15:0] wall_rom   [0:WALL_COUNT-1];
+   logic [15:0] paddle_rom [0:PADDLE_COUNT-1];
+   logic [15:0] score_rom  [0:SCORE_COUNT-1];
+
    logic [31:0] div_count;
-   logic [$clog2(SAMPLE_COUNT)-1:0] index;
+   logic [15:0] index;
+   logic [15:0] current_count;
+   logic [2:0] current_code;
    logic playing;
 
    initial begin
-      $readmemh("sounds/paddle.mem", sample_rom);
+      $readmemh("sounds/wall.mem", wall_rom);
+      $readmemh("sounds/paddle.mem", paddle_rom);
+      $readmemh("sounds/score.mem", score_rom);
    end
 
    always_ff @(posedge clk50 or posedge reset) begin
       if (reset) begin
          div_count <= 32'd0;
-         index <= '0;
+         index <= 16'd0;
          sample <= 16'sd0;
          playing <= 1'b0;
+         current_code <= 3'd0;
+         current_count <= 16'd0;
       end else begin
          if (trigger && !playing) begin
             playing <= 1'b1;
-            index <= '0;
+            index <= 16'd0;
             div_count <= 32'd0;
-            sample <= sample_rom[0];
+            current_code <= sound_code;
+
+            case (sound_code)
+               3'd1: current_count <= WALL_COUNT;
+               3'd2: current_count <= PADDLE_COUNT;
+               3'd3: current_count <= SCORE_COUNT;
+               default: current_count <= PADDLE_COUNT;
+            endcase
          end else if (playing) begin
             if (div_count == SAMPLE_DIV - 1) begin
                div_count <= 32'd0;
-               sample <= sample_rom[index];
 
-               if (index == SAMPLE_COUNT - 1) begin
+               case (current_code)
+                  3'd1: sample <= wall_rom[index];
+                  3'd2: sample <= paddle_rom[index];
+                  3'd3: sample <= score_rom[index];
+                  default: sample <= 16'sd0;
+               endcase
+
+               if (index == current_count - 1) begin
                   playing <= 1'b0;
                   sample <= 16'sd0;
                end else begin
-                  index <= index + 1'b1;
+                  index <= index + 16'd1;
                end
             end else begin
-               div_count <= div_count + 1'b1;
+               div_count <= div_count + 32'd1;
             end
          end else begin
             sample <= 16'sd0;

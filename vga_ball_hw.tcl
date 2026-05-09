@@ -161,4 +161,5 @@ set_interface_property sound CMSIS_SVD_VARIABLES ""
 set_interface_property sound SVD_ADDRESS_GROUP ""
 
 add_interface_port sound SOUND_VALID sound_valid Output 1
+add_interface_port sound SOUND_CODE sound_code Output 3
 

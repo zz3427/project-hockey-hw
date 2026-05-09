@@ -46,9 +46,9 @@ module vga_ball(
                        VGA_BLANK_n,
    output logic        VGA_SYNC_n,
 
-   output logic        SOUND_VALID
-   // ,
-   // output logic [2:0]  SOUND_CODE
+   output logic        SOUND_VALID,
+   output logic [2:0]  SOUND_CODE
+   
 );
 
 
@@ -262,15 +262,29 @@ module vga_ball(
    // Sound event pulse
    // -------------------------------------------------------
 
+   // always_ff @(posedge clk or posedge reset) begin
+   //    if (reset) begin
+   //       SOUND_VALID <= 1'b0;
+   //    end else begin
+   //       // default: only pulse for one clock cycle
+   //       SOUND_VALID <= 1'b0;
+
+   //       if (chipselect && write && address == 3'd1 && writedata[2:0] != 3'd0) begin
+   //          SOUND_VALID <= 1'b1;
+   //       end
+   //    end
+   // end
+
    always_ff @(posedge clk or posedge reset) begin
       if (reset) begin
          SOUND_VALID <= 1'b0;
+         SOUND_CODE  <= 3'd0;
       end else begin
-         // default: only pulse for one clock cycle
          SOUND_VALID <= 1'b0;
 
          if (chipselect && write && address == 3'd1 && writedata[2:0] != 3'd0) begin
             SOUND_VALID <= 1'b1;
+            SOUND_CODE  <= writedata[2:0];
          end
       end
    end
