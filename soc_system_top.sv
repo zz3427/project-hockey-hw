@@ -428,11 +428,12 @@ module simple_audio_out(
 
             if (bit_pos < 5'd16) begin
                AUD_DACLRCK <= 1'b0; // left channel
-               AUD_DACDAT <= frame_sample[15 - bit_pos];
+               //AUD_DACDAT <= frame_sample[15 - bit_pos];
+               AUD_DACDAT <= 1'b0;  // mute right channel to remove static
             end else begin
                AUD_DACLRCK <= 1'b1; // right channel
-               //AUD_DACDAT <= frame_sample[31 - bit_pos];
-               AUD_DACDAT <= 1'b0;  // mute right channel to remove static
+               AUD_DACDAT <= frame_sample[31 - bit_pos];
+               //AUD_DACDAT <= 1'b0;  // mute right channel to remove static
             end
 
             if (bit_pos == 5'd31)
