@@ -290,28 +290,13 @@ module soc_system_top(
   );
 
    // The following quiet the "no driver" warnings for output
-   // pins and should be removed if you use any of these peripherals
+   // pins and should be removed if using any of these peripherals
 
    assign ADC_CS_N = SW[1] ? SW[0] : 1'bZ;
    assign ADC_DIN = SW[0];
    assign ADC_SCLK = SW[0];
-   
-   //assign AUD_ADCLRCK = SW[1] ? SW[0] : 1'bZ;
-   //assign AUD_BCLK = SW[1] ? SW[0] : 1'bZ;
-   //assign AUD_DACDAT = SW[0];
-   //assign AUD_DACLRCK = SW[1] ? SW[0] : 1'bZ;
-   //assign AUD_XCK = SW[0];      
 
    assign AUD_ADCLRCK = 1'bZ;
-
-//   sample_player #(
-//     .SAMPLE_COUNT(9516)
-//   ) paddle_player (
-//     .clk50(CLOCK_50),
-//     .reset(1'b0),
-//     .trigger(sound_trigger),
-//     .sample(audio_sample)
-//   );
 
   sample_player multi_sound_player (
     .clk50(CLOCK_50),
@@ -341,8 +326,6 @@ module soc_system_top(
 
    assign FAN_CTRL = SW[0];
 
-   //assign FPGA_I2C_SCLK = SW[0];
-   //assign FPGA_I2C_SDAT = SW[1] ? SW[0] : 1'bZ;
    wm8731_config audio_codec_config (
     .clk50(CLOCK_50),
     .reset(1'b0),
@@ -351,8 +334,6 @@ module soc_system_top(
   );
 
    assign GPIO_0 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
-   //assign GPIO_0[0]    = sound_out;
-   //assign GPIO_0[35:1] = SW[1] ? { 35{ SW[0] } } : { 35{ 1'bZ } };
    assign GPIO_1 = SW[1] ? { 36{ SW[0] } } : { 36{ 1'bZ } };
 
    assign HEX0 = { 7{ SW[1] } };
@@ -377,17 +358,6 @@ module soc_system_top(
 endmodule
 
 
-// -------------------------------------------------------
-// Simple audio output test module
-//
-// This converts a 1-bit tone signal into serial audio-style
-// output for the DE1-SoC audio codec pins.
-//
-// NOTE:
-// This assumes the audio codec is already configured.
-// If the codec is not configured through I2C, the AUX jack
-// may still be silent even if these signals toggle correctly.
-// -------------------------------------------------------
 module simple_audio_out(
    input  logic clk50,
    input  logic reset,
@@ -428,12 +398,10 @@ module simple_audio_out(
 
             if (bit_pos < 5'd16) begin
                AUD_DACLRCK <= 1'b0; // left channel
-               //AUD_DACDAT <= frame_sample[15 - bit_pos];
                AUD_DACDAT <= 1'b0;  // mute right channel to remove static
             end else begin
                AUD_DACLRCK <= 1'b1; // right channel
                AUD_DACDAT <= frame_sample[31 - bit_pos];
-               //AUD_DACDAT <= 1'b0;  // mute right channel to remove static
             end
 
             if (bit_pos == 5'd31)
@@ -447,13 +415,7 @@ module simple_audio_out(
 endmodule
 
 
-// -------------------------------------------------------
 // WM8731 audio codec I2C configuration
-//
-// Sends a basic startup sequence to the DE1-SoC audio codec.
-// This enables DAC output so AUD_DACDAT/AUD_BCLK/AUD_DACLRCK
-// can produce sound through the AUX/headphone jack.
-// -------------------------------------------------------
 module wm8731_config(
    input  logic clk50,
    input  logic reset,
@@ -462,10 +424,7 @@ module wm8731_config(
    inout        I2C_SDAT
 );
 
-   // WM8731 7-bit I2C address is usually 0x1A.
    localparam [6:0] CODEC_ADDR = 7'h1A;
-
-   // I2C clock divider: 50 MHz / 500 = 100 kHz-ish
    localparam integer CLK_DIV = 250;
 
    logic [15:0] clk_count;
@@ -492,26 +451,9 @@ module wm8731_config(
 
    assign I2C_SDAT = sdat_out_en ? sdat_out : 1'bZ;
 
-   // We drive SCLK directly.
-   // Idle high.
    logic scl;
 
    assign I2C_SCLK = scl;
-
-   // WM8731 register write format:
-   // First byte:  {7-bit device address, write bit 0}
-   // Then 16 data bits:
-   //   [15:9] register address
-   //   [8:0]  register data
-   //
-   // Common config sequence:
-   // R15 reset
-   // R6  power up
-   // R4  analog path: DAC select
-   // R5  digital path
-   // R7  digital audio interface: I2S, 16-bit
-   // R8  sampling control
-   // R9  active
 
    logic [3:0] rom_index;
    logic [15:0] rom_data;
@@ -721,61 +663,6 @@ module wm8731_config(
 
 endmodule
 
-// module sample_player #(
-//    parameter SAMPLE_COUNT = 8000
-// )(
-//    input  logic clk50,
-//    input  logic reset,
-//    input  logic trigger,
-
-//    output logic signed [15:0] sample
-// );
-
-//    localparam integer SAMPLE_DIV = 1024; 
-
-//    logic [15:0] sample_rom [0:SAMPLE_COUNT-1];
-//    logic [31:0] div_count;
-//    logic [$clog2(SAMPLE_COUNT)-1:0] index;
-//    logic playing;
-
-//    initial begin
-//       $readmemh("sounds/paddle.mem", sample_rom);
-//    end
-
-//    always_ff @(posedge clk50 or posedge reset) begin
-//       if (reset) begin
-//          div_count <= 32'd0;
-//          index <= '0;
-//          sample <= 16'sd0;
-//          playing <= 1'b0;
-//       end else begin
-//          if (trigger && !playing) begin
-//             playing <= 1'b1;
-//             index <= '0;
-//             div_count <= 32'd0;
-//             sample <= sample_rom[0];
-//          end else if (playing) begin
-//             if (div_count == SAMPLE_DIV - 1) begin
-//                div_count <= 32'd0;
-//                sample <= sample_rom[index];
-
-//                if (index == SAMPLE_COUNT - 1) begin
-//                   playing <= 1'b0;
-//                   sample <= 16'sd0;
-//                end else begin
-//                   index <= index + 1'b1;
-//                end
-//             end else begin
-//                div_count <= div_count + 1'b1;
-//             end
-//          end else begin
-//             sample <= 16'sd0;
-//          end
-//       end
-//    end
-
-// endmodule
-
 module sample_player(
    input  logic clk50,
    input  logic reset,
@@ -816,19 +703,6 @@ module sample_player(
          current_code <= 3'd0;
          current_count <= 16'd0;
       end else begin
-         //if (trigger && !playing) begin
-         //   playing <= 1'b1;
-         //   index <= 16'd0;
-         //   div_count <= 32'd0;
-         //   current_code <= sound_code;
-
-         //   case (sound_code)
-         //      3'd1: current_count <= WALL_COUNT;
-         //      3'd2: current_count <= PADDLE_COUNT;
-         //      3'd3: current_count <= SCORE_COUNT;
-         //      default: current_count <= PADDLE_COUNT;
-         //   endcase
-         //end else if (playing) begin
          if (trigger) begin
             playing <= 1'b1;
             index <= 16'd0;

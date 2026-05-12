@@ -25,8 +25,6 @@
     *   5                 0x14          W     SCORE:
     *                                        bits[2:0] = SCORE_P1
     *                                        bits[5:3] = SCORE_P2
-    *
-    * Fmax (Slow 1100mV 85C): TBD after synthesis
     */
 
 module vga_ball(
@@ -61,10 +59,7 @@ module vga_ball(
    assign px = hcount[10:1];
    assign py = vcount;
 
-   // -------------------------------------------------------
    // Hardware/software interface registers
-   // -------------------------------------------------------
-
    logic [2:0] sound_event;
 
    logic [9:0] p1_x, p1_y;
@@ -114,7 +109,6 @@ module vga_ball(
             end
 
             // 0x10: PUCK_POS
-            // Kept for design-doc compatibility, but not drawn yet.
             3'd4: begin
                puck_x <= writedata[9:0];
                puck_y <= writedata[25:16];
@@ -127,16 +121,12 @@ module vga_ball(
             end
 
             default: begin
-               // Do nothing
             end
          endcase
       end
    end
 
-   // -------------------------------------------------------
    // Avalon read logic
-   // -------------------------------------------------------
-
    logic vsync_ready;
    assign vsync_ready = (vcount >= 10'd480);
 
@@ -155,10 +145,7 @@ module vga_ball(
       endcase
    end
 
-   // -------------------------------------------------------
    // Rink geometry
-   // -------------------------------------------------------
-
    localparam WL = 10;
    localparam WR = 629;
    localparam WT = 10;
@@ -170,26 +157,26 @@ module vga_ball(
    localparam GB = 290;
 
    // Centre circles (two concentric rings)
-   localparam CCR_LO = 24'd756;   // inner red  ring: r ≈ 30, lo = 27.5²
-   localparam CCR_HI = 24'd1056;  //                  hi = 32.5²
-   localparam CCB_LO = 24'd2756;  // outer blue ring: r ≈ 55, lo = 52.5²
-   localparam CCB_HI = 24'd3306;  //                  hi = 57.5²
+   localparam CCR_LO = 24'd756;   // inner red  ring: r ≈ 30, lo = 27.5^2
+   localparam CCR_HI = 24'd1056;  //                  hi = 32.5^2
+   localparam CCB_LO = 24'd2756;  // outer blue ring: r ≈ 55, lo = 52.5^2
+   localparam CCB_HI = 24'd3306;  //                  hi = 57.5^2
 
-   // Goal arcs: circle centred at left/right wall mid, r = 90 ± 3 px
-   localparam ARC_LO = 24'd7569;  // 87²
-   localparam ARC_HI = 24'd8649;  // 93²
+   // Goal arcs: circle centred at left/right wall mid, r = 90 +/- 3 px
+   localparam ARC_LO = 24'd7569;  // 87^2
+   localparam ARC_HI = 24'd8649;  // 93^2
 
-   // Paddle dome: 2-level radial gradient (r² thresholds)
-   localparam PAD_L1 = 24'd196;    // r ≤  14  bright
-   localparam PAD_L2 = 24'd256;   // r ≤ 16  inside border
-   localparam PAD_L3 = 24'd784;  // r ≤ 28  dark
-   localparam PAD_R2 = 24'd900;  // r ≤ 30  border
+   // Paddle dome: 2-level radial gradient (r^2 thresholds)
+   localparam PAD_L1 = 24'd196;    // r <=  14  bright
+   localparam PAD_L2 = 24'd256;   // r <= 16  inside border
+   localparam PAD_L3 = 24'd784;  // r <= 28  dark
+   localparam PAD_R2 = 24'd900;  // r <= 30  border
 
-   // Puck dome: 2-level radial gradient (r² thresholds)
-   localparam PUCK_L1 = 24'd256;   // r ≤  16  bright
-   localparam PUCK_L2 = 24'd289;  // r ≤ 17  inside border
-   localparam PUCK_L3 = 24'd361;  // r ≤ 19  dark
-   localparam PUCK_R2 = 24'd400;  // r ≤ 20  border
+   // Puck dome: 2-level radial gradient (r^2 thresholds)
+   localparam PUCK_L1 = 24'd256;   // r <=  16  bright
+   localparam PUCK_L2 = 24'd289;  // r <= 17  inside border
+   localparam PUCK_L3 = 24'd361;  // r <= 19  dark
+   localparam PUCK_R2 = 24'd400;  // r <= 20  border
 
    // Score display positions
    localparam SCORE_Y  = 10'd30;
@@ -199,10 +186,7 @@ module vga_ball(
    localparam DIGIT_W = 10'd30;
    localparam DIGIT_H = 10'd50;
 
-   // -------------------------------------------------------
    // Centre circle distance squared
-   // -------------------------------------------------------
-
    logic signed [11:0] cdx, cdy;
    logic [23:0] cdist2;
 
@@ -210,10 +194,7 @@ module vga_ball(
    assign cdy    = $signed({2'b00, py}) - 12'sd240;
    assign cdist2 = cdx * cdx + cdy * cdy;
 
-   // -------------------------------------------------------
    // Paddle 1 distance squared
-   // -------------------------------------------------------
-
    logic signed [11:0] p1dx, p1dy;
    logic [23:0] p1dist2;
 
@@ -221,20 +202,15 @@ module vga_ball(
    assign p1dy    = $signed({2'b00, py}) - $signed({2'b00, p1_y});
    assign p1dist2 = p1dx * p1dx + p1dy * p1dy;
 
-   // -------------------------------------------------------
    // Paddle 2 distance squared
-   // -------------------------------------------------------
-
    logic signed [11:0] p2dx, p2dy;
    logic [23:0] p2dist2;
 
    assign p2dx    = $signed({2'b00, px}) - $signed({2'b00, p2_x});
    assign p2dy    = $signed({2'b00, py}) - $signed({2'b00, p2_y});
    assign p2dist2 = p2dx * p2dx + p2dy * p2dy;
-   // -------------------------------------------------------
-   // Puck distance squared
-   // -------------------------------------------------------
 
+   // Puck distance squared
    logic signed [11:0] puck_dx, puck_dy;
    logic [23:0] puck_dist2;
 
@@ -242,10 +218,8 @@ module vga_ball(
    assign puck_dy    = $signed({2'b00, py}) - $signed({2'b00, puck_y});
    assign puck_dist2 = puck_dx * puck_dx + puck_dy * puck_dy;
 
-   // -------------------------------------------------------
-   // Goal arc distance squared (centre = wall mid-point, r = 90 px)
-   // -------------------------------------------------------
 
+   // Goal arc distance squared (centre = wall mid-point, r = 90 px)
    logic signed [11:0] lax, lay;
    logic [23:0] larc_dist2;
    assign lax       = $signed({2'b00, px}) - 12'sd10;
@@ -257,23 +231,6 @@ module vga_ball(
    assign rax       = $signed({2'b00, px}) - 12'sd629;
    assign ray       = $signed({2'b00, py}) - 12'sd240;
    assign rarc_dist2 = rax * rax + ray * ray;
-
-   // -------------------------------------------------------
-   // Sound event pulse
-   // -------------------------------------------------------
-
-   // always_ff @(posedge clk or posedge reset) begin
-   //    if (reset) begin
-   //       SOUND_VALID <= 1'b0;
-   //    end else begin
-   //       // default: only pulse for one clock cycle
-   //       SOUND_VALID <= 1'b0;
-
-   //       if (chipselect && write && address == 3'd1 && writedata[2:0] != 3'd0) begin
-   //          SOUND_VALID <= 1'b1;
-   //       end
-   //    end
-   // end
 
    always_ff @(posedge clk or posedge reset) begin
       if (reset) begin
@@ -290,12 +247,10 @@ module vga_ball(
    end
 
 
-   // -------------------------------------------------------
+
    // Seven-segment score digit, supports 0-7
    // local x range: 0..29
    // local y range: 0..49
-   // -------------------------------------------------------
-
    function automatic logic score_digit_on(
       input logic [2:0] digit,
       input logic [9:0] x,
@@ -345,10 +300,8 @@ module vga_ball(
    end
    endfunction
 
-      // -------------------------------------------------------
+   
    // Score display pixel detection
-   // -------------------------------------------------------
-
    logic p1_score_on, p2_score_on;
 
    always_comb begin
@@ -366,10 +319,8 @@ module vga_ball(
       end
    end
 
-   // -------------------------------------------------------
-   // VGA renderer
-   // -------------------------------------------------------
 
+   // VGA renderer
    always_comb begin
       {VGA_R, VGA_G, VGA_B} = 24'h000000;
 
@@ -438,9 +389,7 @@ module vga_ball(
 
 endmodule
 
-// -------------------------------------------------------
 // VGA timing generator — unchanged from lab3 skeleton
-// -------------------------------------------------------
 module vga_counters(
    input  logic         clk50, reset,
    output logic [10:0]  hcount,
