@@ -816,17 +816,45 @@ module sample_player(
          current_code <= 3'd0;
          current_count <= 16'd0;
       end else begin
-         if (trigger && !playing) begin
+         //if (trigger && !playing) begin
+         //   playing <= 1'b1;
+         //   index <= 16'd0;
+         //   div_count <= 32'd0;
+         //   current_code <= sound_code;
+
+         //   case (sound_code)
+         //      3'd1: current_count <= WALL_COUNT;
+         //      3'd2: current_count <= PADDLE_COUNT;
+         //      3'd3: current_count <= SCORE_COUNT;
+         //      default: current_count <= PADDLE_COUNT;
+         //   endcase
+         //end else if (playing) begin
+         if (trigger) begin
             playing <= 1'b1;
             index <= 16'd0;
             div_count <= 32'd0;
             current_code <= sound_code;
 
             case (sound_code)
-               3'd1: current_count <= WALL_COUNT;
-               3'd2: current_count <= PADDLE_COUNT;
-               3'd3: current_count <= SCORE_COUNT;
-               default: current_count <= PADDLE_COUNT;
+               3'd1: begin
+                  current_count <= WALL_COUNT;
+                  sample <= wall_rom[0];
+               end
+
+               3'd2: begin
+                  current_count <= PADDLE_COUNT;
+                  sample <= paddle_rom[0];
+               end
+
+               3'd3: begin
+                  current_count <= SCORE_COUNT;
+                  sample <= score_rom[0];
+               end
+
+               default: begin
+                  current_count <= PADDLE_COUNT;
+                  sample <= paddle_rom[0];
+               end
             endcase
          end else if (playing) begin
             if (div_count == SAMPLE_DIV - 1) begin
